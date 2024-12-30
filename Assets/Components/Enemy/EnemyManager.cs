@@ -1,6 +1,7 @@
 using Managers;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using EventType = Managers.EventType;
@@ -18,6 +19,7 @@ public class EnemyManager : MonoBehaviour
     
     private RenderParams renderParams;
     private NativeArray<Matrix4x4> matrices;
+    private NativeArray<EnemyTransform> enemyTransforms;
     private NativeArray<Enemy> enemies;
     private int currentIndex;
     private int amountOfEnemies;
@@ -26,6 +28,8 @@ public class EnemyManager : MonoBehaviour
     private ComputeBuffer enemyMatrixBuffer;
     private GraphicsBuffer commandBuf;
     private GraphicsBuffer.IndirectDrawIndexedArgs[] commandData;
+
+    private NativeQuadTree quadTree;
 
     private void OnDisable()
     {
@@ -36,6 +40,7 @@ public class EnemyManager : MonoBehaviour
         commandBuf?.Dispose();
         matrices.Dispose();
         enemies.Dispose();
+        quadTree.Dispose();
     }
 
     private void OnEnable()
@@ -49,12 +54,18 @@ public class EnemyManager : MonoBehaviour
         enemyMatrixBuffer = new ComputeBuffer(maxAmountEnemies, sizeof(float) * 16);
         commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 1, GraphicsBuffer.IndirectDrawIndexedArgs.size);
         commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[1];
+        quadTree = new NativeQuadTree(maxAmountEnemies, 15, 2, new float2(10, 10), matrices);
         
         for (int i = 0; i < startAmountEnemies; i++)
         {
-            Vector3 pos = GetRandomPosition(5, (float)i / startAmountEnemies * (Mathf.PI * 2));
+            Vector3 pos = GetRandomPosition(4, (float)i / startAmountEnemies * (Mathf.PI * 2));
             // Vector3 pos = GetRandomPosition(5, Random.Range(0, Mathf.PI * 2));
             AddEnemy(pos);
+            quadTree.Insert(i, new float2(pos.x, pos.y));
+        }
+        for (int i = 0; i < startAmountEnemies; i++)
+        {
+            quadTree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
         }
         
         commandData[0].indexCountPerInstance = mesh.GetIndexCount(0);
@@ -65,6 +76,22 @@ public class EnemyManager : MonoBehaviour
         enemyMatrixBuffer.SetData(matrices);
         material.SetBuffer("enemyDataBuffer", enemyDataBuffer);
         material.SetBuffer("enemyMatrixBuffer", enemyMatrixBuffer);
+    }
+    
+    [BurstCompile]
+    struct InsertPointsJob : IJob
+    {
+        public NativeQuadTree quadtree;
+        public NativeArray<float2> positions;
+        public int until;
+            
+        public void Execute()
+        {
+            for (int i = 0; i < until; i++)
+            {
+                quadtree.Insert(i, positions[i]);
+            }
+        }
     }
 
     private void Update()
@@ -138,6 +165,7 @@ public class EnemyManager : MonoBehaviour
         amountOfEnemies--;
         matrices[index] = matrices[currentIndex];
         enemies[index] = enemies[currentIndex];
+        
         Matrix4x4 matrix = matrices[currentIndex];
         matrix.m03 = 9999;
         matrices[currentIndex] = matrix;
@@ -183,6 +211,12 @@ public class EnemyManager : MonoBehaviour
     
         return angle;
     }
+}
+
+public struct EnemyTransform
+{
+    public float2 position;
+    public float4 quaternion;
 }
 
 public struct Enemy
