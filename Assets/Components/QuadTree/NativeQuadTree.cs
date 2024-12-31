@@ -1,6 +1,8 @@
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 
 public struct NativeQuadTree
@@ -9,9 +11,11 @@ public struct NativeQuadTree
     private readonly int objectsPerNode;
     private readonly float2 boundsSize;
     
-    private NativeParallelHashMap<uint, int> amountObjectsInCell; //hoeveel objecten je in een cell hebt
+    public NativeParallelHashMap<uint, int> amountObjectsInCell; //hoeveel objecten je in een cell hebt
     private NativeParallelMultiHashMap<uint, int> objects; //de indexen die wijzen naar de objecten in een cell
-    private readonly NativeArray<Matrix4x4> enemyTransforms;
+    [NativeDisableContainerSafetyRestriction]
+    private NativeArray<Matrix4x4> enemyTransforms;
+    private NativeArray<float2> precomputedBoundSizes;
 
     public NativeQuadTree(int maxObjects, int maxDepth, int objectsPerNode, float2 boundsSize, NativeArray<Matrix4x4> enemyTransforms)
     {
@@ -21,6 +25,12 @@ public struct NativeQuadTree
         
         amountObjectsInCell = new NativeParallelHashMap<uint, int>(maxObjects, Allocator.Persistent);
         objects = new NativeParallelMultiHashMap<uint, int>(maxObjects / objectsPerNode, Allocator.Persistent);
+        precomputedBoundSizes = new NativeArray<float2>(maxDepth + 1, Allocator.Persistent);
+        for (int i = 0; i < maxDepth + 1; i++)
+        {
+            float pow = math.pow(2, 1 + i);
+            precomputedBoundSizes[i] = new float2(boundsSize.x / pow, boundsSize.y / pow);
+        }
         this.enemyTransforms = enemyTransforms;
     }
 
@@ -28,15 +38,24 @@ public struct NativeQuadTree
     {
         amountObjectsInCell.Dispose();
         objects.Dispose();
+        precomputedBoundSizes.Dispose();
     }
 
+    public void Clear()
+    {
+        amountObjectsInCell.Clear();
+        objects.Clear();
+    }
+
+    private readonly static ProfilerMarker insert = new ProfilerMarker("Quadtree.Insert");
     public bool Insert(int objectIndex, float2 position)
     {
+        insert.Begin();
         int depth = 0;
 
         for (uint i = 0; i < 4; i++)
         {
-            uint localIndex = GetChildIndex(0, i, depth);
+            uint localIndex = GetChildIndex(0, i);
             if (!amountObjectsInCell.TryGetValue(localIndex, out int amount))
             {
                 amountObjectsInCell.Add(localIndex, 0);
@@ -47,10 +66,10 @@ public struct NativeQuadTree
             {
                 if (amount >= objectsPerNode)
                 {
-                    bool child1 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 0, depth + 1), out _);
-                    bool child2 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 1, depth + 1), out _);
-                    bool child3 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 2, depth + 1), out _);
-                    bool child4 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 3, depth + 1), out _);
+                    bool child1 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 0), out _);
+                    bool child2 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 1), out _);
+                    bool child3 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 2), out _);
+                    bool child4 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 3), out _);
                     if (child1 &&
                         child2 &&
                         child3 &&
@@ -58,16 +77,18 @@ public struct NativeQuadTree
                     {
                         Subdivide(localIndex, depth);
                     }
+                    
                     return InsertNext(localIndex, depth, objectIndex, position);
                 }
                 
                 amountObjectsInCell[localIndex]++;
                 objects.Add(localIndex, objectIndex);
+                insert.End();
                 return true;
             }
         }
-        depth++;
 
+        insert.End();
         return false;
     }
 
@@ -76,7 +97,7 @@ public struct NativeQuadTree
         depth++;
         for (uint i = 0; i < 4; i++)
         {
-            uint localIndex = GetChildIndex(parentIndex, i, depth);
+            uint localIndex = GetChildIndex(parentIndex, i);
             if (!amountObjectsInCell.TryGetValue(localIndex, out int amount))
             {
                 amountObjectsInCell.Add(localIndex, 0);
@@ -87,10 +108,10 @@ public struct NativeQuadTree
             {
                 if (amount >= objectsPerNode)
                 {
-                    bool child1 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 0, depth + 1), out _);
-                    bool child2 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 1, depth + 1), out _);
-                    bool child3 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 2, depth + 1), out _);
-                    bool child4 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 3, depth + 1), out _);
+                    bool child1 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 0), out _);
+                    bool child2 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 1), out _);
+                    bool child3 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 2), out _);
+                    bool child4 = !amountObjectsInCell.TryGetValue(GetChildIndex(localIndex, 3), out _);
                     if (child1 &&
                         child2 &&
                         child3 &&
@@ -103,17 +124,22 @@ public struct NativeQuadTree
                 
                 amountObjectsInCell[localIndex]++;
                 objects.Add(localIndex, objectIndex);
+                insert.End();
                 return true;
             }
         }
         
+        insert.End();
         return false;
     }
 
+    private readonly static ProfilerMarker subdivide = new ProfilerMarker("Quadtree.Subdivide");
     private void Subdivide(uint cellIndex, int depth)
     {
+        subdivide.Begin();
         depth++;
-        
+
+        amountObjectsInCell[cellIndex] = 9999;
         int objectCount = 0;
         NativeArray<int> objectsInCell = new NativeArray<int>(objectsPerNode, Allocator.Temp);
         foreach (var tempObj in objects.GetValuesForKey(cellIndex))
@@ -123,46 +149,103 @@ public struct NativeQuadTree
 
         for (uint i = 0; i < 4; i++)
         {
-            uint localIndex = GetChildIndex(cellIndex, i, depth);
+            uint localIndex = GetChildIndex(cellIndex, i);
             float4 bounds = GetCellBounds(localIndex, depth);
             for (int j = 0; j < objectCount; j++)
             {
                 if (!IsPointInsideBounds(bounds, new float2(enemyTransforms[objectsInCell[j]].m03, enemyTransforms[objectsInCell[j]].m13)))
                     continue;
-                
-                if(!amountObjectsInCell.TryGetValue(localIndex, out _))
-                    amountObjectsInCell.Add(localIndex, 0);
-                
-                amountObjectsInCell[localIndex]++;
+
                 objects.Add(localIndex, objectsInCell[j]);
+                
+                // if (!amountObjectsInCell.TryGetValue(localIndex, out _))
+                // {
+                //     amountObjectsInCell.TryAdd(localIndex, 1);
+                //     continue;
+                // }
+                amountObjectsInCell.TryAdd(localIndex, 0);
+                amountObjectsInCell[localIndex]++;
             }
         }
+        subdivide.End();
     }
 
+    
+    private readonly static ProfilerMarker cellbounds = new ProfilerMarker("Quadtree.Cellbounds");
     private float4 GetCellBounds(uint cellId, int depth)
     {
+        cellbounds.Begin();
         float2 center = float2.zero;
         for (int i = depth; i >= 0 ; i--)
         {
             uint localCell = cellId >> i * 3;
             int iFlipped = depth - i;
-            center.x += -boundsSize.x / math.pow(2, 2 + iFlipped) + boundsSize.x / math.pow(2, 1 + iFlipped) * (int)(localCell & 1);
-            center.y += -boundsSize.y / math.pow(2, 2 + iFlipped) + boundsSize.y / math.pow(2, 1 + iFlipped) * (int)((localCell & 2) >> 1);
+            center.x += -precomputedBoundSizes[iFlipped + 1].x + precomputedBoundSizes[iFlipped].x * (int)(localCell & 1);
+            center.y += -precomputedBoundSizes[iFlipped + 1].y + precomputedBoundSizes[iFlipped].y * (int)((localCell & 2) >> 1);
         }
-        return new float4(center, boundsSize.x / math.pow(2, 1 + depth), boundsSize.y / math.pow(2, 1 + depth));
+        cellbounds.End();
+        return new float4(center, precomputedBoundSizes[depth].x, precomputedBoundSizes[depth].y);
+    }
+    public float4 GetCellBounds(uint cellId)
+    {
+        float2 center = float2.zero;
+        int depth = GetDepth(cellId);
+        for (int i = depth; i >= 0 ; i--)
+        {
+            uint localCell = cellId >> i * 3;
+            int iFlipped = depth - i;
+            center.x += -precomputedBoundSizes[iFlipped + 1].x + precomputedBoundSizes[iFlipped].x * (int)(localCell & 1);
+            center.y += -precomputedBoundSizes[iFlipped + 1].y + precomputedBoundSizes[iFlipped].y * (int)((localCell & 2) >> 1);
+        }
+        return new float4(center, precomputedBoundSizes[depth].x, precomputedBoundSizes[depth].y);
     }
 
-    private uint GetChildIndex(uint parentIndex, uint childIndex, int depth)
+    private readonly static uint[] depthMasks = {
+        4,
+        32,
+        256,
+        2048,
+        16384,
+        131072,
+        1048576,
+        8388608,
+        67108864,
+        536870912,
+    };
+    private int GetDepth(uint cellId)
     {
-        return (8 | childIndex) | parentIndex << 3;
+        for (int i = 9; i >= 0; i--)
+        {
+            if ((cellId & depthMasks[i]) > 0)
+            {
+                return i;
+            }
+        }
+        return 10;
+    }
+
+    private readonly static ProfilerMarker getChildIndex = new ProfilerMarker("Quadtree.ChildIndex");
+    private uint GetChildIndex(uint parentIndex, uint childIndex)
+    {
+        getChildIndex.Begin();
+        parentIndex <<= 3;
+        childIndex |= 4;
+        uint final = childIndex | parentIndex;
+        getChildIndex.End();
+        return final;
     }
     
-    private static bool IsPointInsideBounds(float4 bounds, float2 point)
+    private readonly static ProfilerMarker isPointInsideBounds = new ProfilerMarker("Quadtree.ChildIndex");
+    private bool IsPointInsideBounds(float4 bounds, float2 point)
     {
-        // Extract bounds information
+        isPointInsideBounds.Begin();
         float2 halfSize = new float2(bounds.z * 0.5f, bounds.w * 0.5f);
+        float2 min = bounds.xy - halfSize;
+        float2 max = bounds.xy + halfSize;
 
         // Check if the point is within bounds
-        return point.x >= bounds.x - halfSize.x && point.x <= bounds.x + halfSize.x && point.y >= bounds.y - halfSize.y && point.y <= bounds.y + halfSize.y;
+        bool pointInsideBounds = math.all(point >= min & point <= max);
+        isPointInsideBounds.End();
+        return pointInsideBounds;
     }
 }

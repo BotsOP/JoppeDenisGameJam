@@ -1,8 +1,10 @@
+using System;
 using Managers;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.VisualScripting;
 using UnityEngine;
 using EventType = Managers.EventType;
 using Random = UnityEngine.Random;
@@ -54,19 +56,15 @@ public class EnemyManager : MonoBehaviour
         enemyMatrixBuffer = new ComputeBuffer(maxAmountEnemies, sizeof(float) * 16);
         commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 1, GraphicsBuffer.IndirectDrawIndexedArgs.size);
         commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[1];
-        quadTree = new NativeQuadTree(maxAmountEnemies, 15, 2, new float2(10, 10), matrices);
+        quadTree = new NativeQuadTree(maxAmountEnemies, 12, 5, new float2(10, 10), matrices);
         
         for (int i = 0; i < startAmountEnemies; i++)
         {
             Vector3 pos = GetRandomPosition(4, (float)i / startAmountEnemies * (Mathf.PI * 2));
             // Vector3 pos = GetRandomPosition(5, Random.Range(0, Mathf.PI * 2));
             AddEnemy(pos);
-            quadTree.Insert(i, new float2(pos.x, pos.y));
         }
-        for (int i = 0; i < startAmountEnemies; i++)
-        {
-            quadTree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
-        }
+        
         
         commandData[0].indexCountPerInstance = mesh.GetIndexCount(0);
         commandData[0].instanceCount = (uint)amountOfEnemies;
@@ -77,33 +75,59 @@ public class EnemyManager : MonoBehaviour
         material.SetBuffer("enemyDataBuffer", enemyDataBuffer);
         material.SetBuffer("enemyMatrixBuffer", enemyMatrixBuffer);
     }
-    
+
+    // private void OnDrawGizmos()
+    // {
+    //     if(!Application.isPlaying)
+    //         return;
+    //
+    //     foreach (uint cellId in quadTree.amountObjectsInCell.GetKeyArray(Allocator.Temp))
+    //     {
+    //         float4 bounds = quadTree.GetCellBounds(cellId);
+    //         Gizmos.DrawWireCube(new Vector3(bounds.x, bounds.y, -2), new Vector3(bounds.z, bounds.w, 0.1f));
+    //     }
+    // }
+
     [BurstCompile]
     struct InsertPointsJob : IJob
     {
         public NativeQuadTree quadtree;
-        public NativeArray<float2> positions;
+        [NativeDisableParallelForRestriction]
+        public NativeArray<Matrix4x4> matrices;
         public int until;
-            
+        
+        public InsertPointsJob(NativeQuadTree quadtree, NativeArray<Matrix4x4> matrices, int until)
+        {
+            this.quadtree = quadtree;
+            this.matrices = matrices;
+            this.until = until;
+        }
+
         public void Execute()
         {
             for (int i = 0; i < until; i++)
             {
-                quadtree.Insert(i, positions[i]);
+                quadtree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
             }
         }
     }
 
+    private JobHandle jobHandle;
     private void Update()
     {
+        jobHandle.Complete();
+        
+        MoveEnemy(amountOfEnemies, ref matrices, ref enemies);
         enemyDataBuffer.SetData(enemies);
         enemyMatrixBuffer.SetData(matrices);
         material.SetBuffer("enemyDataBuffer", enemyDataBuffer);
         material.SetBuffer("enemyMatrixBuffer", enemyMatrixBuffer);
         
         Graphics.RenderMeshIndirect(renderParams, mesh, commandBuf);
-
-        MoveEnemy(amountOfEnemies, ref matrices, ref enemies);
+        
+        quadTree.Clear();
+        InsertPointsJob insertPointsJob = new InsertPointsJob(quadTree, matrices, amountOfEnemies);
+        jobHandle = insertPointsJob.Schedule(jobHandle);
     }
 
     [BurstCompile]

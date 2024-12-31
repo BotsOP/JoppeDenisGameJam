@@ -165,7 +165,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 1
   speedVariance: 0.5
-  startAmountEnemies: 15
+  startAmountEnemies: 10000
   maxAmountEnemies: 10000
   mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
   material: {fileID: 2100000, guid: a89b127dc7602cf4989c8f2a7ad80d1a, type: 2}
