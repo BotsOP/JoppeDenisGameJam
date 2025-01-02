@@ -16,6 +16,8 @@ public class EnemyManager : MonoBehaviour
     [SerializeField] private float speedVariance;
     [SerializeField] private int startAmountEnemies = 100;
     [SerializeField] private int maxAmountEnemies = 10000;
+    [SerializeField] private int maxQuadTreeDepth = 12;
+    [SerializeField] private int maxObjectsPerCell = 5;
     [SerializeField] private Mesh mesh;
     [SerializeField] private Material material;
     
@@ -37,6 +39,7 @@ public class EnemyManager : MonoBehaviour
     {
         EventSystem<float3>.Unsubscribe(EventType.PLAYER_SHOOT, ZapShot);
 
+        jobHandle.Complete();
         enemyDataBuffer?.Dispose();
         enemyMatrixBuffer?.Dispose();
         commandBuf?.Dispose();
@@ -56,7 +59,7 @@ public class EnemyManager : MonoBehaviour
         enemyMatrixBuffer = new ComputeBuffer(maxAmountEnemies, sizeof(float) * 16);
         commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 1, GraphicsBuffer.IndirectDrawIndexedArgs.size);
         commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[1];
-        quadTree = new NativeQuadTree(maxAmountEnemies, 12, 5, new float2(10, 10), matrices);
+        quadTree = new NativeQuadTree(maxAmountEnemies, maxQuadTreeDepth, maxObjectsPerCell, new float2(10, 10), matrices);
         
         for (int i = 0; i < startAmountEnemies; i++)
         {
@@ -64,7 +67,6 @@ public class EnemyManager : MonoBehaviour
             // Vector3 pos = GetRandomPosition(5, Random.Range(0, Mathf.PI * 2));
             AddEnemy(pos);
         }
-        
         
         commandData[0].indexCountPerInstance = mesh.GetIndexCount(0);
         commandData[0].instanceCount = (uint)amountOfEnemies;
@@ -107,7 +109,7 @@ public class EnemyManager : MonoBehaviour
         {
             for (int i = 0; i < until; i++)
             {
-                quadtree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
+                quadtree.InsertPoint(i, new float2(matrices[i].m03, matrices[i].m13));
             }
         }
     }
@@ -128,6 +130,10 @@ public class EnemyManager : MonoBehaviour
         quadTree.Clear();
         InsertPointsJob insertPointsJob = new InsertPointsJob(quadTree, matrices, amountOfEnemies);
         jobHandle = insertPointsJob.Schedule(jobHandle);
+        // for (int i = 0; i < amountOfEnemies; i++)
+        // {
+        //     quadTree.InsertPoint(i, new float2(matrices[i].m03, matrices[i].m13));
+        // }
     }
 
     [BurstCompile]
