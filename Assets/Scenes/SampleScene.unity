@@ -168,7 +168,7 @@ MonoBehaviour:
   startAmountEnemies: 10000
   maxAmountEnemies: 10000
   maxQuadTreeDepth: 5
-  maxObjectsPerCell: 10
+  maxObjectsPerCell: 50
   mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
   material: {fileID: 2100000, guid: a89b127dc7602cf4989c8f2a7ad80d1a, type: 2}
 --- !u!1 &330585543

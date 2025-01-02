@@ -93,10 +93,10 @@ public class EnemyManager : MonoBehaviour
     [BurstCompile]
     struct InsertPointsJob : IJob
     {
-        public NativeQuadTree quadtree;
+        private NativeQuadTree quadtree;
         [NativeDisableParallelForRestriction]
-        public NativeArray<Matrix4x4> matrices;
-        public int until;
+        private readonly NativeArray<Matrix4x4> matrices;
+        private int until;
         
         public InsertPointsJob(NativeQuadTree quadtree, NativeArray<Matrix4x4> matrices, int until)
         {
@@ -109,7 +109,7 @@ public class EnemyManager : MonoBehaviour
         {
             for (int i = 0; i < until; i++)
             {
-                quadtree.InsertPoint(i, new float2(matrices[i].m03, matrices[i].m13));
+                quadtree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
             }
         }
     }
@@ -132,7 +132,7 @@ public class EnemyManager : MonoBehaviour
         jobHandle = insertPointsJob.Schedule(jobHandle);
         // for (int i = 0; i < amountOfEnemies; i++)
         // {
-        //     quadTree.InsertPoint(i, new float2(matrices[i].m03, matrices[i].m13));
+        //     quadTree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
         // }
     }
 

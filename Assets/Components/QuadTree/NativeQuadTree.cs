@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
@@ -8,19 +9,25 @@ using UnityEngine;
 
 public struct NativeQuadTree
 {
+    private const int MAX_ALLOWED_DEPTH = 12;
     private readonly int maxDepth;
     private readonly int objectsPerNode;
     
     public NativeParallelHashMap<uint, int> amountObjectsInCell; //hoeveel objecten je in een cell hebt
     private NativeParallelMultiHashMap<uint, int> objects; //de indexen die wijzen naar de objecten in een cell
     [NativeDisableContainerSafetyRestriction]
-    private NativeArray<Matrix4x4> enemyTransforms;
+    private readonly NativeArray<Matrix4x4> enemyTransforms;
     private NativeArray<float2> precomputedBoundSizes;
 
     public NativeQuadTree(int maxObjects, int maxDepth, int objectsPerNode, float2 boundsSize, NativeArray<Matrix4x4> enemyTransforms)
     {
+        if (maxDepth > MAX_ALLOWED_DEPTH)
+        {
+            Debug.LogError($"QuadTree: max depth should not be larger then {MAX_ALLOWED_DEPTH}");
+        }
         this.maxDepth = maxDepth;
         this.objectsPerNode = objectsPerNode;
+        this.enemyTransforms = enemyTransforms;
         
         amountObjectsInCell = new NativeParallelHashMap<uint, int>(maxObjects, Allocator.Persistent);
         objects = new NativeParallelMultiHashMap<uint, int>(maxObjects / objectsPerNode, Allocator.Persistent);
@@ -30,7 +37,6 @@ public struct NativeQuadTree
             float pow = math.pow(2, 1 + i);
             precomputedBoundSizes[i] = new float2(boundsSize.x / pow, boundsSize.y / pow);
         }
-        this.enemyTransforms = enemyTransforms;
     }
 
     public void Dispose()
@@ -45,39 +51,40 @@ public struct NativeQuadTree
         amountObjectsInCell.Clear();
         objects.Clear();
     }
-
-    public void InsertPoint(int objectIndex, float2 position)
+    
+    public void Insert(int objectIndex, float2 position)
     {
-        Insert(0, -1, objectIndex, position);
-    }
-
-    private void Insert(uint parentIndex, int depth, int objectIndex, float2 position)
-    {
-        uint quadChildIndex = GetQuadIndex(parentIndex, depth, position);
-        uint localIndex = GetChildIndex(parentIndex, quadChildIndex);
-        amountObjectsInCell.TryAdd(localIndex, 0);
-        int amount = amountObjectsInCell[localIndex];
-            
-        depth++;
-        if (amount >= objectsPerNode && depth != maxDepth)
+        uint cellIndex = 0;
+        int depth = -1;
+        for (int i = 0; i <= maxDepth; i++)
         {
-            if (amount != int.MaxValue)
+            uint quadChildIndex = GetQuadIndex(cellIndex, depth, position);
+            cellIndex = GetChildIndex(cellIndex, quadChildIndex);
+            amountObjectsInCell.TryAdd(cellIndex, 0);
+            int amount = amountObjectsInCell[cellIndex];
+            
+            depth++;
+            if (amount >= objectsPerNode && depth != maxDepth)
             {
-                Subdivide(localIndex, depth);
+                if (amount != int.MaxValue)
+                {
+                    Subdivide(cellIndex, depth);
+                }
+                continue;
             }
-            Insert(localIndex, depth, objectIndex, position);
-            return;
+            
+            amountObjectsInCell[cellIndex]++;
+            objects.Add(cellIndex, objectIndex);
+            break;
         }
-                
-        amountObjectsInCell[localIndex]++;
-        objects.Add(localIndex, objectIndex);
     }
 
     private void Subdivide(uint cellIndex, int depth)
     {
         amountObjectsInCell[cellIndex] = int.MaxValue;
         int objectCount = 0;
-        NativeArray<int> objectsInCell = new NativeArray<int>(objectsPerNode, Allocator.Temp);
+        Span<int> objectsInCell = stackalloc int[objectsPerNode];
+        // NativeArray<int> objectsInCell = new NativeArray<int>(objectsPerNode, Allocator.Temp);
         foreach (var tempObj in objects.GetValuesForKey(cellIndex))
             objectsInCell[objectCount++] = tempObj;
 
