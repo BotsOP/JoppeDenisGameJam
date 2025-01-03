@@ -18,13 +18,16 @@ public class EnemyManager : MonoBehaviour
     [SerializeField] private int maxAmountEnemies = 10000;
     [SerializeField] private int maxQuadTreeDepth = 12;
     [SerializeField] private int maxObjectsPerCell = 5;
+    [SerializeField] private float2 shootSize;
+    [SerializeField] private float shootDamage;
+    [SerializeField] private Camera cam;
     [SerializeField] private Mesh mesh;
     [SerializeField] private Material material;
     
     private RenderParams renderParams;
     private NativeArray<Matrix4x4> matrices;
-    private NativeArray<EnemyTransform> enemyTransforms;
     private NativeArray<Enemy> enemies;
+    private NativeArray<EnemyTransform> enemyTransforms;
     private int currentIndex;
     private int amountOfEnemies;
     
@@ -46,6 +49,7 @@ public class EnemyManager : MonoBehaviour
         matrices.Dispose();
         enemies.Dispose();
         quadTree.Dispose();
+        debugResults.Dispose();
     }
 
     private void OnEnable()
@@ -60,6 +64,8 @@ public class EnemyManager : MonoBehaviour
         commandBuf = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 1, GraphicsBuffer.IndirectDrawIndexedArgs.size);
         commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[1];
         quadTree = new NativeQuadTree(maxAmountEnemies, maxQuadTreeDepth, maxObjectsPerCell, new float2(10, 10), matrices);
+        
+        debugResults = new NativeList<uint>(Allocator.Persistent);
         
         for (int i = 0; i < startAmountEnemies; i++)
         {
@@ -78,18 +84,69 @@ public class EnemyManager : MonoBehaviour
         material.SetBuffer("enemyMatrixBuffer", enemyMatrixBuffer);
     }
 
-    // private void OnDrawGizmos()
-    // {
-    //     if(!Application.isPlaying)
-    //         return;
-    //
-    //     foreach (uint cellId in quadTree.amountObjectsInCell.GetKeyArray(Allocator.Temp))
-    //     {
-    //         float4 bounds = quadTree.GetCellBounds(cellId);
-    //         Gizmos.DrawWireCube(new Vector3(bounds.x, bounds.y, -2), new Vector3(bounds.z, bounds.w, 0.1f));
-    //     }
-    // }
+    private void OnDrawGizmos()
+    {
+        if(!Application.isPlaying)
+            return;
+        
+        Gizmos.DrawWireCube(new Vector3(hitPos.x, hitPos.y, -2), new Vector3(shootSize.x, shootSize.y, 0.1f));
+    
+        foreach (uint cellId in debugResults)
+        {
+            float4 bounds = quadTree.GetCellBounds(cellId);
+            Gizmos.DrawWireCube(new Vector3(bounds.x, bounds.y, -2), new Vector3(bounds.z, bounds.w, 0.1f));
+        }
+    }
 
+
+    private float2 hitPos;
+    private JobHandle jobHandle;
+    private NativeList<uint> debugResults;
+    private void Update()
+    {
+        quadTree.Clear();
+        InsertPointsJob insertPointsJob = new InsertPointsJob(quadTree, matrices, amountOfEnemies);
+        
+        jobHandle = insertPointsJob.Schedule(jobHandle);
+        if (Input.GetMouseButton(0))
+        {
+            RaycastHit hit;
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+        
+            if (Physics.Raycast(ray, out hit))
+            {
+                NativeList<int> results = new NativeList<int>(Allocator.TempJob);
+                hitPos = new float2(hit.point.x, hit.point.y);
+                debugResults.Clear();
+                QueryQuadtree queryQuadtree = new QueryQuadtree(results, debugResults, quadTree, enemies, new float4(hitPos, shootSize), shootDamage);
+                jobHandle = queryQuadtree.Schedule(jobHandle);
+                jobHandle.Complete();
+                if (Input.GetMouseButton(1))
+                {
+                    Debug.Break();
+                }
+                queryQuadtree.results.Dispose();
+            }
+        }
+        else
+        {
+            jobHandle.Complete();
+        }
+        
+        // for (int i = 0; i < amountOfEnemies; i++)
+        // {
+        //     quadTree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
+        // }
+        
+        MoveEnemy(amountOfEnemies, ref matrices, ref enemies);
+        enemyDataBuffer.SetData(enemies);
+        enemyMatrixBuffer.SetData(matrices);
+        material.SetBuffer("enemyDataBuffer", enemyDataBuffer);
+        material.SetBuffer("enemyMatrixBuffer", enemyMatrixBuffer);
+        
+        Graphics.RenderMeshIndirect(renderParams, mesh, commandBuf);
+    }
+    
     [BurstCompile]
     struct InsertPointsJob : IJob
     {
@@ -113,27 +170,37 @@ public class EnemyManager : MonoBehaviour
             }
         }
     }
-
-    private JobHandle jobHandle;
-    private void Update()
+    
+    [BurstCompile]
+    struct QueryQuadtree : IJob
     {
-        jobHandle.Complete();
+        public NativeList<int> results;
+        public NativeList<uint> debugResults;
+        private NativeQuadTree quadtree;
+        private NativeArray<Enemy> enemies;
+        private float4 bounds;
+        private float shootDamage;
         
-        MoveEnemy(amountOfEnemies, ref matrices, ref enemies);
-        enemyDataBuffer.SetData(enemies);
-        enemyMatrixBuffer.SetData(matrices);
-        material.SetBuffer("enemyDataBuffer", enemyDataBuffer);
-        material.SetBuffer("enemyMatrixBuffer", enemyMatrixBuffer);
-        
-        Graphics.RenderMeshIndirect(renderParams, mesh, commandBuf);
-        
-        quadTree.Clear();
-        InsertPointsJob insertPointsJob = new InsertPointsJob(quadTree, matrices, amountOfEnemies);
-        jobHandle = insertPointsJob.Schedule(jobHandle);
-        // for (int i = 0; i < amountOfEnemies; i++)
-        // {
-        //     quadTree.Insert(i, new float2(matrices[i].m03, matrices[i].m13));
-        // }
+        public QueryQuadtree(NativeList<int> results, NativeList<uint> debugResults, NativeQuadTree quadtree, NativeArray<Enemy> enemies, float4 bounds, float shootDamage)
+        {
+            this.results = results;
+            this.debugResults = debugResults;
+            this.quadtree = quadtree;
+            this.enemies = enemies;
+            this.bounds = bounds;
+            this.shootDamage = shootDamage;
+        }
+
+        public void Execute()
+        {
+            quadtree.Query(results, debugResults, bounds);
+            for (int i = 0; i < results.Length; i++)
+            {
+                Enemy enemy = enemies[results[i]];
+                enemy.health -= shootDamage;
+                enemies[results[i]] = enemy;
+            }
+        }
     }
 
     [BurstCompile]

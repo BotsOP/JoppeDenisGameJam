@@ -163,12 +163,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 38a348514e2b6d047b84fa021537f4a8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  speed: 1
+  speed: 0.2
   speedVariance: 0.5
-  startAmountEnemies: 10000
+  startAmountEnemies: 1000
   maxAmountEnemies: 10000
   maxQuadTreeDepth: 5
-  maxObjectsPerCell: 50
+  maxObjectsPerCell: 2
+  shootSize:
+    x: 1
+    y: 1
+  shootDamage: 0.01
+  cam: {fileID: 330585545}
   mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
   material: {fileID: 2100000, guid: a89b127dc7602cf4989c8f2a7ad80d1a, type: 2}
 --- !u!1 &330585543
@@ -681,7 +686,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2029574425}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 07a3f6b9aa0e00d4c9915fb13e3cf518, type: 3}
   m_Name: 
