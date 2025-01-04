@@ -165,10 +165,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 0.2
   speedVariance: 0.5
-  startAmountEnemies: 1000
+  startAmountEnemies: 10000
   maxAmountEnemies: 10000
   maxQuadTreeDepth: 5
-  maxObjectsPerCell: 2
+  maxObjectsPerCell: 300
   shootSize:
     x: 1
     y: 1
@@ -176,6 +176,11 @@ MonoBehaviour:
   cam: {fileID: 330585545}
   mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
   material: {fileID: 2100000, guid: a89b127dc7602cf4989c8f2a7ad80d1a, type: 2}
+  maxAmountBullets: 10000
+  bulletSpeed: 5
+  bulletDamage: 1
+  bulletPenetration: 5
+  bulletMaterial: {fileID: 2100000, guid: b8760fbc051cf274ba0fd836e93dd09e, type: 2}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -673,7 +678,7 @@ Transform:
   m_GameObject: {fileID: 2029574425}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: -0.1}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

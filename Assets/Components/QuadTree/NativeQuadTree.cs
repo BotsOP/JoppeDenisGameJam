@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using Components.Instances.Jobs;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -13,11 +14,13 @@ public struct NativeQuadTree
     private readonly int maxDepth;
     private readonly int objectsPerNode;
     
-    public NativeParallelHashMap<uint, int> amountObjectsInCell; //hoeveel objecten je in een cell hebt
+    private NativeParallelHashMap<uint, int> amountObjectsInCell; //hoeveel objecten je in een cell hebt
     private NativeParallelMultiHashMap<uint, int> objects; //de indexen die wijzen naar de objecten in een cell
-    [NativeDisableContainerSafetyRestriction]
-    private readonly NativeArray<Matrix4x4> enemyTransforms;
     private NativeArray<float2> precomputedBoundSizes;
+    
+    [NativeDisableContainerSafetyRestriction]
+    private readonly NativeArray<Enemy> enemyTransforms;
+    
     
     public void Dispose()
     {
@@ -32,7 +35,7 @@ public struct NativeQuadTree
         objects.Clear();
     }
 
-    public NativeQuadTree(int maxObjects, int maxDepth, int objectsPerNode, float2 boundsSize, NativeArray<Matrix4x4> enemyTransforms)
+    public NativeQuadTree(int maxObjects, int maxDepth, int objectsPerNode, float2 boundsSize, NativeArray<Enemy> enemyTransforms)
     {
         if (maxDepth > MAX_ALLOWED_DEPTH)
         {
@@ -52,12 +55,12 @@ public struct NativeQuadTree
         }
     }
 
-    public NativeList<int> Query(NativeList<int> results, NativeList<uint> debugResults, float4 bounds)
+    public NativeList<int> Query(NativeList<int> results, float4 bounds)
     {
-        QueryChild(results, debugResults, bounds, 0, -1);
+        QueryChild(results, bounds, 0, -1);
         return results;
     }
-    private void QueryChild(NativeList<int> results, NativeList<uint> debugResults, float4 bounds, uint cellIndex, int depth)
+    private void QueryChild(NativeList<int> results, float4 bounds, uint cellIndex, int depth)
     {
         depth++;
         if(depth > maxDepth)
@@ -68,27 +71,26 @@ public struct NativeQuadTree
             uint localCellIndex = GetChildIndex(cellIndex, i);
             float4 cellBounds = GetCellBounds(localCellIndex, depth);
             uint howMuchAreBoundsOverlapping = HowMuchAreBoundsOverlapping(cellBounds, bounds);
-            
             if (amountObjectsInCell.TryGetValue(localCellIndex, out int amount) && howMuchAreBoundsOverlapping > 0)
             {
                 if (amount == int.MaxValue)
                 {
-                    if (howMuchAreBoundsOverlapping == 3)
+                    if (howMuchAreBoundsOverlapping == 2)
                     {
-                        GetAllChildIndexes(results, debugResults, localCellIndex, depth);
+                        GetAllChildIndexes(results, localCellIndex, depth);
                         continue;
                     }
-                    QueryChild(results, debugResults, bounds, localCellIndex, depth);
+                    QueryChild(results, bounds, localCellIndex, depth);
+                    continue;
                 }
-
-                debugResults.Add(localCellIndex);
+                
                 foreach (int tempObj in objects.GetValuesForKey(localCellIndex))
                     results.Add(tempObj);
             }
         }
     }
 
-    private void GetAllChildIndexes(NativeList<int> results, NativeList<uint> debugResults, uint cellIndex, int depth)
+    private void GetAllChildIndexes(NativeList<int> results, uint cellIndex, int depth)
     {
         depth++;
         if(depth > maxDepth)
@@ -102,11 +104,10 @@ public struct NativeQuadTree
             {
                 if (amount == int.MaxValue)
                 {
-                    GetAllChildIndexes(results, debugResults, localCellIndex, depth);
+                    GetAllChildIndexes(results, localCellIndex, depth);
                     continue;
                 }
                 
-                debugResults.Add(localCellIndex);
                 foreach (int tempObj in objects.GetValuesForKey(localCellIndex))
                     results.Add(tempObj);
             }
@@ -153,8 +154,7 @@ public struct NativeQuadTree
 
         for (int j = 0; j < objectCount; j++)
         {
-            uint quadChildIndex = GetQuadIndex(cellIndex, depth, new float2(enemyTransforms[objectsInCell[j]].m03, 
-                                                                            enemyTransforms[objectsInCell[j]].m13));
+            uint quadChildIndex = GetQuadIndex(cellIndex, depth, enemyTransforms[objectsInCell[j]].position);
             uint localIndex = GetChildIndex(cellIndex, quadChildIndex);
 
             objects.Add(localIndex, objectsInCell[j]);
@@ -217,10 +217,10 @@ public struct NativeQuadTree
         float2 minB = boxB.xy - halfSizeB;
         float2 maxB = boxB.xy + halfSizeB;
 
-        uint amountAxisInsideBoundsB = minA.x > minB.x && minA.x < maxB.x && minA.y > minB.y && minA.y < maxB.y ? (uint)1 : 0;
-        amountAxisInsideBoundsB     = minB.x > minA.x && minB.x < maxA.x && minB.y > minA.y && minB.y < maxA.y ? amountAxisInsideBoundsB | 4 : amountAxisInsideBoundsB;
-        amountAxisInsideBoundsB     = minB.x > minA.x && minB.x < maxA.x && minB.y > minA.y && minB.y < maxA.y ? amountAxisInsideBoundsB | 8 : amountAxisInsideBoundsB;
-        return                        maxA.x < maxB.x && maxA.x > minB.x && maxA.y < maxB.y && maxA.y > minB.y ? amountAxisInsideBoundsB | 2 : amountAxisInsideBoundsB;
+        if (math.all(minA > minB & maxA < maxB))
+            return 2;
+        
+        return math.all(new bool4(maxA.x > minB.x, minA.x < maxB.x, maxA.y > minB.y, minA.y < maxB.y)) ? (uint)1 : 0;
     }
     
     #region Visual
