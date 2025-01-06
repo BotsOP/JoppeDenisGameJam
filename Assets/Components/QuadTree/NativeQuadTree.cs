@@ -18,8 +18,8 @@ public struct NativeQuadTree
     private NativeParallelMultiHashMap<uint, int> objects; //de indexen die wijzen naar de objecten in een cell
     private NativeArray<float2> precomputedBoundSizes;
     
-    [NativeDisableContainerSafetyRestriction]
-    private readonly NativeArray<Enemy> enemyTransforms;
+    [NativeDisableContainerSafetyRestriction, ReadOnly]
+    public NativeArray<Boid> enemyTransforms;
     
     
     public void Dispose()
@@ -35,7 +35,7 @@ public struct NativeQuadTree
         objects.Clear();
     }
 
-    public NativeQuadTree(int maxObjects, int maxDepth, int objectsPerNode, float2 boundsSize, NativeArray<Enemy> enemyTransforms)
+    public NativeQuadTree(int maxObjects, int maxDepth, int objectsPerNode, float2 boundsSize, NativeArray<Boid> enemyTransforms)
     {
         if (maxDepth > MAX_ALLOWED_DEPTH)
         {

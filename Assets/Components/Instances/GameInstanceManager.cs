@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Components.Instances.Jobs;
 using Managers;
 using Unity.Burst;
@@ -82,7 +83,7 @@ public class GameInstanceManager : MonoBehaviour
         commandBufBullets = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 1, GraphicsBuffer.IndirectDrawIndexedArgs.size);
         commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[1];
         commandDataBullets = new GraphicsBuffer.IndirectDrawIndexedArgs[1];
-        quadTree = new NativeQuadTree(maxAmountEnemies, maxQuadTreeDepth, maxObjectsPerCell, new float2(10, 10), enemies);
+        // quadTree = new NativeQuadTree(maxAmountEnemies, maxQuadTreeDepth, maxObjectsPerCell, new float2(10, 10), enemies);
         toBeRemoved = new NativeList<int>(Allocator.Persistent);
         toBeRemovedBullets = new NativeList<int>(Allocator.Persistent);
         currentEnemyIndex = new NativeArray<int>(2, Allocator.Persistent);
