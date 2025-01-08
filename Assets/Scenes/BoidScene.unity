@@ -163,17 +163,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0b14d9804d0ae640bdb81c54d6fff68, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  test: 0
   alignmentRadius: 0.3
   cohesionRadius: 0.3
-  separationRadius: 0.1
+  separationRadius: 0.25
   alignmentWeight: 0.1
   cohesionWeight: 0.1
   separationWeight: 0.15
   maxSpeed: 2
   maxForce: 0.1
-  maxAmountEnemies: 10000
+  maxAmountEnemies: 25000
   maxQuadTreeDepth: 5
-  maxObjectsPerCell: 100
+  maxObjectsPerCell: 2
   mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
   material: {fileID: 2100000, guid: b9d721dfc16b298469af0a13be1be39a, type: 2}
 --- !u!1 &330585543

@@ -31,7 +31,7 @@ inline void SetUnityMatrices(uint instanceID, inout float4x4 objectToWorld, inou
 {
 // #if UNITY_ANY_INSTANCING_ENABLED
     float4x4 worldMatrix;
-    worldMatrix = compose(float3(BoidsDataBuffer[instanceID].position, -1), float4(0, 0, 0, 1), float3(0.05, 0.05, 0.05));
+    worldMatrix = compose(float3(BoidsDataBuffer[instanceID].position, -1), float4(0, 0, 0, 1), float3(0.03, 0.03, 0.03));
     // if(instanceID < amountEnemies)
     // {
     //     worldMatrix = compose(float3(enemyDataBuffer[instanceID].position, -1), EulerToQuaternion(float3(0, 0, enemyDataBuffer[instanceID].angle)), float3(0.1, 0.1, 0.1));

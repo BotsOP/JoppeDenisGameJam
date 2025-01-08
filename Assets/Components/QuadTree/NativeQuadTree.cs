@@ -54,10 +54,58 @@ public struct NativeQuadTree
             precomputedBoundSizes[i] = new float2(boundsSize.x / pow, boundsSize.y / pow);
         }
     }
+    
+    private readonly static uint[] quadMasks = {
+        0b_0101, //left bottom
+        0b_0110, //right bottom
+        0b_1001, //left top
+        0b_1010, //right top
+    };
+    
+    private int CountSetBits(uint value)
+    {
+        // Use bitwise operations to count set bits efficiently
+        value -= (value >> 1) & 0x55555555; // Subtract pairs of bits
+        value = (value & 0x33333333) + ((value >> 2) & 0x33333333); // Count groups of 4 bits
+        value = (value + (value >> 4)) & 0x0F0F0F0F; // Count groups of 8 bits
+        return (int)((value * 0x01010101) >> 24); // Sum all the bits in the final byte
+    }
+
 
     public NativeList<int> Query(NativeList<int> results, float4 bounds)
     {
-        QueryChild(results, bounds, 0, -1);
+        QueryChild(results, bounds, 0, -2);
+        
+        // int depth = -1;
+        // uint cellIndex = 0;
+        //
+        // uint howMuchAreBoundsOverlapping = HowMuchAreBoundsOverlapping2(float2.zero, bounds);
+        // // int test = CountSetBits(howMuchAreBoundsOverlapping);
+        // for (uint i = 0; i < 4; i++)
+        // {
+        //     uint localCellIndex = GetChildIndex(cellIndex, i);
+        //     // float4 cellBounds = GetCellBounds(localCellIndex, depth);
+        //     // uint howMuchAreBoundsOverlapping = HowMuchAreBoundsOverlapping(cellBounds, bounds);
+        //     if (amountObjectsInCell.TryGetValue(localCellIndex, out int amount) && (quadMasks[i] & howMuchAreBoundsOverlapping) == quadMasks[i])
+        //     {
+        //         if (amount == int.MaxValue)
+        //         {
+        //             // if (howMuchAreBoundsOverlapping == 2)
+        //             // {
+        //             //     GetAllChildIndexes(results, localCellIndex, depth);
+        //             //     continue;
+        //             // }
+        //             QueryChild(results, bounds, localCellIndex, -1);
+        //             // if(test == 2)
+        //             //     break;
+        //             
+        //             continue;
+        //         }
+        //         
+        //         foreach (int tempObj in objects.GetValuesForKey(localCellIndex))
+        //             results.Add(tempObj);
+        //     }
+        // }
         return results;
     }
     private void QueryChild(NativeList<int> results, float4 bounds, uint cellIndex, int depth)
@@ -66,21 +114,19 @@ public struct NativeQuadTree
         if(depth > maxDepth)
             return;
         
+        float2 cellBounds = GetCellBounds(cellIndex, depth).xy;
+        uint howMuchAreBoundsOverlapping = HowMuchAreBoundsOverlapping2(cellBounds, bounds);
+        // int test = CountSetBits(howMuchAreBoundsOverlapping);
         for (uint i = 0; i < 4; i++)
         {
             uint localCellIndex = GetChildIndex(cellIndex, i);
-            float4 cellBounds = GetCellBounds(localCellIndex, depth);
-            uint howMuchAreBoundsOverlapping = HowMuchAreBoundsOverlapping(cellBounds, bounds);
-            if (amountObjectsInCell.TryGetValue(localCellIndex, out int amount) && howMuchAreBoundsOverlapping > 0)
+            if (amountObjectsInCell.TryGetValue(localCellIndex, out int amount) && (quadMasks[i] & howMuchAreBoundsOverlapping) == quadMasks[i])
             {
                 if (amount == int.MaxValue)
                 {
-                    if (howMuchAreBoundsOverlapping == 2)
-                    {
-                        GetAllChildIndexes(results, localCellIndex, depth);
-                        continue;
-                    }
                     QueryChild(results, bounds, localCellIndex, depth);
+                    // if(test == 2)
+                    //     break;
                     continue;
                 }
                 
@@ -89,6 +135,36 @@ public struct NativeQuadTree
             }
         }
     }
+    
+    // private void QueryChild(NativeList<int> results, float4 bounds, uint cellIndex, int depth)
+    // {
+    //     depth++;
+    //     if(depth > maxDepth)
+    //         return;
+    //     
+    //     for (uint i = 0; i < 4; i++)
+    //     {
+    //         uint localCellIndex = GetChildIndex(cellIndex, i);
+    //         float4 cellBounds = GetCellBounds(localCellIndex, depth);
+    //         uint howMuchAreBoundsOverlapping = HowMuchAreBoundsOverlapping(cellBounds, bounds);
+    //         if (amountObjectsInCell.TryGetValue(localCellIndex, out int amount) && howMuchAreBoundsOverlapping > 0)
+    //         {
+    //             if (amount == int.MaxValue)
+    //             {
+    //                 if (howMuchAreBoundsOverlapping == 2)
+    //                 {
+    //                     GetAllChildIndexes(results, localCellIndex, depth);
+    //                     continue;
+    //                 }
+    //                 QueryChild(results, bounds, localCellIndex, depth);
+    //                 continue;
+    //             }
+    //             
+    //             foreach (int tempObj in objects.GetValuesForKey(localCellIndex))
+    //                 results.Add(tempObj);
+    //         }
+    //     }
+    // }
 
     private void GetAllChildIndexes(NativeList<int> results, uint cellIndex, int depth)
     {
@@ -178,7 +254,7 @@ public struct NativeQuadTree
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private float4 GetCellBounds(uint cellId, int depth)
+    private float2 GetCellBounds(uint cellId, int depth)
     {
         float2 center = float2.zero;
         for (int i = depth; i >= 0 ; i--)
@@ -188,7 +264,7 @@ public struct NativeQuadTree
             center.x += -precomputedBoundSizes[iFlipped + 1].x + precomputedBoundSizes[iFlipped].x * (int)(localCell & 1);
             center.y += -precomputedBoundSizes[iFlipped + 1].y + precomputedBoundSizes[iFlipped].y * (int)((localCell & 2) >> 1);
         }
-        return new float4(center, precomputedBoundSizes[depth].x, precomputedBoundSizes[depth].y);
+        return new float2(center);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -196,12 +272,16 @@ public struct NativeQuadTree
     {
         return (childIndex | 4) | (parentIndex << 3);
     }
+    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private uint GetQuadIndex(uint cellIndex, int depth, float2 point)
     {
         float2 centerCellPosition = GetCellPosition(cellIndex, depth);
-        uint x = point.x > centerCellPosition.x ? (uint)1 : 0;
-        return point.y > centerCellPosition.y ? x | 2 : x;
+        point -= centerCellPosition;
+        point *= 256;
+        return (uint)point.x >> 31 ^ 1 | ((uint)point.y >> 31 ^ 1) << 1;
+        // uint x = point.x > centerCellPosition.x ? (uint)1 : 0;
+        // return point.y > centerCellPosition.y ? x | 2 : x;
     }
     
     // 0 = not overlapping
@@ -221,6 +301,23 @@ public struct NativeQuadTree
             return 2;
         
         return math.all(new bool4(maxA.x > minB.x, minA.x < maxB.x, maxA.y > minB.y, minA.y < maxB.y)) ? (uint)1 : 0;
+    }
+    
+    private uint HowMuchAreBoundsOverlapping2(float2 boxA, float4 boxB)
+    {
+        float2 halfSizeB = new float2(boxB.z * 0.5f, boxB.w * 0.5f);
+
+        float2 minB = boxB.xy - halfSizeB;
+        float2 maxB = boxB.xy + halfSizeB;
+
+        //left
+        uint final = minB.x < boxA.x ? (uint)1 : 0;
+        //right
+        final = maxB.x > boxA.x ? final | 2 : final;
+        //bottom
+        final = minB.y < boxA.y ? final | 4 : final;
+        //top
+        return maxB.y > boxA.y ? final | 8 : final;
     }
     
     #region Visual

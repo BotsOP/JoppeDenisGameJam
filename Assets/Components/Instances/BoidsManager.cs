@@ -12,6 +12,7 @@ using Random = UnityEngine.Random;
 
 public class BoidsManager : MonoBehaviour
 {
+    public float test;
     [Header("Flocking Behavior")]
     public float alignmentRadius = 3f;
     public float cohesionRadius = 3f;
@@ -76,7 +77,7 @@ public class BoidsManager : MonoBehaviour
     private void Update()
     {
         jobHandle.Complete();
-        
+
         NativeArray<Boid> currentBoidRead = Time.frameCount % 2 == 1 ? boidsPing : boidsPong;
         NativeArray<Boid> currentBoidWrite = Time.frameCount % 2 == 0 ? boidsPing : boidsPong;
 
@@ -88,8 +89,10 @@ public class BoidsManager : MonoBehaviour
         quadTree.Clear();
         quadTree.enemyTransforms = currentBoidRead;
         InsertBoidsQuadtree insertPointsJob = new InsertBoidsQuadtree(quadTree, currentBoidRead);
+        // UpdateBoidsSequential updateBoids = new UpdateBoidsSequential(quadTree, currentBoidRead, currentBoidWrite, alignmentRadius, cohesionRadius, separationRadius, alignmentWeight, cohesionWeight, separationWeight, maxSpeed, maxForce, Time.deltaTime);
         UpdateBoids updateBoids = new UpdateBoids(quadTree, currentBoidRead, currentBoidWrite, alignmentRadius, cohesionRadius, separationRadius, alignmentWeight, cohesionWeight, separationWeight, maxSpeed, maxForce, Time.deltaTime);
         JobHandle jobHandle2 = insertPointsJob.Schedule();
+        // jobHandle = updateBoids.Schedule(jobHandle2);
         jobHandle = updateBoids.ScheduleParallel(maxAmountEnemies, 64, jobHandle2);
     }
 }
