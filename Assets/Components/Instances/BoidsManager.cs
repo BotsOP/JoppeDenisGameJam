@@ -12,7 +12,6 @@ using Random = UnityEngine.Random;
 
 public class BoidsManager : MonoBehaviour
 {
-    public float test;
     [Header("Flocking Behavior")]
     public float alignmentRadius = 3f;
     public float cohesionRadius = 3f;
