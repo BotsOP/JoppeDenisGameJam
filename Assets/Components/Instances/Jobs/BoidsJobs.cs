@@ -65,6 +65,8 @@ struct UpdateBoids : IJobFor
     public float maxForce;
     private float deltaTime;
 
+    private float maxDistance;
+
     public UpdateBoids(NativeQuadTree quadtree, NativeArray<Boid> boidsDataRead, NativeArray<Boid> boidsDataWrite, float alignmentRadiusSq, float cohesionRadiusSq, float separationRadiusfSq, float alignmentWeight, float cohesionWeight, float separationWeight, float maxSpeed, float maxForce, float deltaTime)
     {
         this.quadtree = quadtree;
@@ -79,6 +81,8 @@ struct UpdateBoids : IJobFor
         this.maxSpeed = maxSpeed;
         this.maxForce = maxForce;
         this.deltaTime = deltaTime;
+        
+        maxDistance = math.max(math.max(math.sqrt(alignmentRadiusSq), math.sqrt(cohesionRadiusSq)), math.sqrt(separationRadiusfSq));
     }
 
     public void Execute(int index)
@@ -86,34 +90,12 @@ struct UpdateBoids : IJobFor
         NativeList<int> quadtreeResults = new NativeList<int>(Allocator.Temp);
         Boid boid = boidsDataRead[index];
         
-        int test = 3;
-        // if (boid.position.x > test)
-        //     boid.velocity.x = -maxForce * 2;
-        // if (boid.position.x < -test)
-        //     boid.velocity.x = maxForce * 2;
-        //
-        // if (boid.position.y > test)
-        //     boid.velocity.y = -maxForce * 2;
-        // if (boid.position.y < -test)
-        //     boid.velocity.y = maxForce * 2;
         if (!IsPointInsideBounds(new float4(0, 0, 16, 9), boid.position))
         {
             boid.velocity = (float2.zero - boid.position);
         }
-        // if (!IsPointInsideBounds(new float4(0, 0, 16, 9), boid.position))
-        // {
-        //     if (boid.position.x > 16 / 2f)
-        //         boid.position.x -= 15.99f;
-        //     if (boid.position.x < 16 / -2f)
-        //         boid.position.x += 15.99f;
-        //     
-        //     if (boid.position.y > 9 / 2f)
-        //         boid.position.y -= 8.99f;
-        //     if (boid.position.y < 9 / -2f)
-        //         boid.position.y += 8.99f;
-        // }
         
-        quadtree.Query(quadtreeResults, new float4(boid.position, 0.5f, 0.5f));
+        quadtree.Query(quadtreeResults, new float4(boid.position, maxDistance * 1.1f, maxDistance * 1.1f));
 
         boid.amountNeighbours = 0;
         if (quadtreeResults.Length > 0)

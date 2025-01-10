@@ -14,9 +14,9 @@ public struct NativeQuadTree
     private readonly int maxDepth;
     private readonly int objectsPerNode;
     
-    private NativeParallelHashMap<uint, int> amountObjectsInCell; //hoeveel objecten je in een cell hebt
+    public NativeParallelHashMap<uint, int> amountObjectsInCell; //hoeveel objecten je in een cell hebt
     private NativeParallelMultiHashMap<uint, int> objects; //de indexen die wijzen naar de objecten in een cell
-    private NativeArray<float2> precomputedBoundSizes;
+    public NativeArray<float2> precomputedBoundSizes;
     
     [NativeDisableContainerSafetyRestriction, ReadOnly]
     public NativeArray<Boid> enemyTransforms;
@@ -335,8 +335,6 @@ public struct NativeQuadTree
         }
         return new float4(center, precomputedBoundSizes[depth].x, precomputedBoundSizes[depth].y);
     }
-    
-    
 
     private readonly static uint[] depthMasks = {
         4,
